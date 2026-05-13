@@ -318,15 +318,14 @@ def load_month_data(month_key: str) -> pd.DataFrame:
         except Exception as e:
             st.error(f"Failed to load data: {e}")
             return pd.DataFrame()
-        
+
     try:
-        response = requests.get(api_url, timeout=30)
-        response.raise_for_status()
+        df = pd.read_csv(csv_url)
+        return df
 
-        data = response.json()
-        df = pd.DataFrame(data["records"])
-
-        return clean_dataframe(df)
+    except Exception as e:
+        st.error(f"Data Pipeline Offline: {e}")
+        return pd.DataFrame()
 
     except Exception as e:
         st.error(f"Data Pipeline Offline: {e}")
