@@ -569,8 +569,22 @@ selected_month = st.sidebar.selectbox(
 
 
 # Load selected month.
-with st.spinner(f"Loading {selected_month} data..."):
-    df_source = load_month_data(selected_month)
+@st.cache_data(ttl=60, show_spinner=False)
+def load_month_data(month_key: str) -> pd.DataFrame:
+    if month_key not in MONTH_GIDS:
+        st.error(f"No Google Sheet tab configured for {month_key}")
+        return pd.DataFrame()
+
+    csv_url = BASE_MONTH_URL.format(gid=MONTH_GIDS[month_key])
+
+    try:
+        df = pd.read_csv(csv_url, low_memory=False)
+        df = clean_dataframe(df)
+        return df
+
+    except Exception as e:
+        st.error(f"Data Pipeline Offline: {e}")
+        return pd.DataFrame()
 
 
 # Live simulation settings.
@@ -624,7 +638,7 @@ if df.empty:
 
 # Show data loading status in the sidebar.
 st.sidebar.caption(
-    f"Fast API month-tab loading<br>"
+f"Fast Google Sheets month-tab loading<br>"
     f"Live: **{st.session_state.live_row_count:,}** of **{MAX_ROWS:,}** records loaded",
     unsafe_allow_html=True
 )
