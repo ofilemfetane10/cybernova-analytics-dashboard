@@ -6,7 +6,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import requests
 from streamlit_autorefresh import st_autorefresh
 
 
@@ -276,56 +275,20 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# Load only the selected monthly partition through the Flask API.
-# The API acts as a separate data access layer between Streamlit and Google Sheets.
-# This makes the dashboard API-driven while keeping the rest of the dashboard logic unchanged.
+# Load only the selected monthly Google Sheets partition.
+# This keeps the dashboard lightweight because it loads one month instead of the full yearly dataset.
 @st.cache_data(ttl=60, show_spinner=False)
 def load_month_data(month_key: str) -> pd.DataFrame:
-    GID_MAP = {
-        "2026-01": "YOUR_GID_1",
-        "2026-02": "YOUR_GID_2",
-        "2026-03": "YOUR_GID_3",
-        "2026-04": "YOUR_GID_4",
-        "2026-05": "YOUR_GID_5",
-        "2026-06": "YOUR_GID_6",
-        "2026-07": "YOUR_GID_7",
-        "2026-08": "YOUR_GID_8",
-        "2026-09": "YOUR_GID_9",
-        "2026-10": "YOUR_GID_10",
-        "2026-11": "YOUR_GID_11",
-        "2026-12": "YOUR_GID_12"
-    }
+    if month_key not in MONTH_GIDS:
+        st.error(f"No Google Sheet tab configured for {month_key}")
+        return pd.DataFrame()
 
-    BASE_SHEETS_URL = (
-        "https://docs.google.com/spreadsheets/d/e/"
-        "YOUR_SHEET_ID/pub"
-    )
-
-    @st.cache_data(ttl=300)
-    def load_data(month_key):
-        gid = GID_MAP.get(month_key)
-
-        if gid is None:
-            st.error(f"No GID configured for {month_key}")
-            return pd.DataFrame()
-
-        csv_url = f"{BASE_SHEETS_URL}?gid={gid}&single=true&output=csv"
-
-        try:
-            df = pd.read_csv(csv_url)
-            return df
-
-        except Exception as e:
-            st.error(f"Failed to load data: {e}")
-            return pd.DataFrame()
+    csv_url = BASE_MONTH_URL.format(gid=MONTH_GIDS[month_key])
 
     try:
-        df = pd.read_csv(csv_url)
+        df = pd.read_csv(csv_url, low_memory=False)
+        df = clean_dataframe(df)
         return df
-
-    except Exception as e:
-        st.error(f"Data Pipeline Offline: {e}")
-        return pd.DataFrame()
 
     except Exception as e:
         st.error(f"Data Pipeline Offline: {e}")
@@ -465,7 +428,6 @@ def line_chart(df, x_col, y_col, x_title, y_title, height=330):
 # Regional mode focuses on Africa, International mode displays the world map,
 # and a selected single country zooms directly to that country.
 def country_demand_map(country_counts, map_scope="Regional", selected_country="All countries", height=360):
-
     country_iso = {
         "Botswana": "BWA",
         "South Africa": "ZAF",
@@ -568,23 +530,9 @@ selected_month = st.sidebar.selectbox(
 )
 
 
-# Load selected month.
-@st.cache_data(ttl=60, show_spinner=False)
-def load_month_data(month_key: str) -> pd.DataFrame:
-    if month_key not in MONTH_GIDS:
-        st.error(f"No Google Sheet tab configured for {month_key}")
-        return pd.DataFrame()
-
-    csv_url = BASE_MONTH_URL.format(gid=MONTH_GIDS[month_key])
-
-    try:
-        df = pd.read_csv(csv_url, low_memory=False)
-        df = clean_dataframe(df)
-        return df
-
-    except Exception as e:
-        st.error(f"Data Pipeline Offline: {e}")
-        return pd.DataFrame()
+# Load selected month before any row counts or filters are calculated.
+with st.spinner(f"Loading {selected_month} data..."):
+    df_source = load_month_data(selected_month)
 
 
 # Live simulation settings.
@@ -632,13 +580,13 @@ df = df_source.head(st.session_state.live_row_count).copy()
 
 # Stop execution if the selected data does not load.
 if df.empty:
-    st.error("No data loaded. Check your published Google Sheet month tabs or Flask API.")
+    st.error("No data loaded. Check your published Google Sheet month tabs.")
     st.stop()
 
 
 # Show data loading status in the sidebar.
 st.sidebar.caption(
-f"Fast Google Sheets month-tab loading<br>"
+    f"Fast Google Sheets month-tab loading<br>"
     f"Live: **{st.session_state.live_row_count:,}** of **{MAX_ROWS:,}** records loaded",
     unsafe_allow_html=True
 )
@@ -910,9 +858,9 @@ market_concentration = (
 
 # Show whether the selected month is live or historical.
 if selected_month == "2026-05":
-    st.success("API-driven live dashboard active")
+    st.success("Google Sheets live dashboard active")
 else:
-    st.info("Static historical API data view")
+    st.info("Static historical Google Sheets data view")
 
 
 # Executive Overview.
