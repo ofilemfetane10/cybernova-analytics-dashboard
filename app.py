@@ -281,8 +281,44 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 # This makes the dashboard API-driven while keeping the rest of the dashboard logic unchanged.
 @st.cache_data(ttl=60, show_spinner=False)
 def load_month_data(month_key: str) -> pd.DataFrame:
-    api_url = f"http://127.0.0.1:5000/api/logs/{month_key}"
+    GID_MAP = {
+        "2026-01": "YOUR_GID_1",
+        "2026-02": "YOUR_GID_2",
+        "2026-03": "YOUR_GID_3",
+        "2026-04": "YOUR_GID_4",
+        "2026-05": "YOUR_GID_5",
+        "2026-06": "YOUR_GID_6",
+        "2026-07": "YOUR_GID_7",
+        "2026-08": "YOUR_GID_8",
+        "2026-09": "YOUR_GID_9",
+        "2026-10": "YOUR_GID_10",
+        "2026-11": "YOUR_GID_11",
+        "2026-12": "YOUR_GID_12"
+    }
 
+    BASE_SHEETS_URL = (
+        "https://docs.google.com/spreadsheets/d/e/"
+        "YOUR_SHEET_ID/pub"
+    )
+
+    @st.cache_data(ttl=300)
+    def load_data(month_key):
+        gid = GID_MAP.get(month_key)
+
+        if gid is None:
+            st.error(f"No GID configured for {month_key}")
+            return pd.DataFrame()
+
+        csv_url = f"{BASE_SHEETS_URL}?gid={gid}&single=true&output=csv"
+
+        try:
+            df = pd.read_csv(csv_url)
+            return df
+
+        except Exception as e:
+            st.error(f"Failed to load data: {e}")
+            return pd.DataFrame()
+        
     try:
         response = requests.get(api_url, timeout=30)
         response.raise_for_status()
