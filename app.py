@@ -1,29 +1,32 @@
+# CyberNova Analytics Dashboard
+# Business Intelligence and Data Analytics Project
+# This Streamlit application analyses simulated IIS web server logs and presents
+# stakeholder-specific business intelligence views for CyberNova Analytics.
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import requests
 from streamlit_autorefresh import st_autorefresh
 
-# Set the browser tab title, page layout, and icon
+
 st.set_page_config(
     page_title="CyberNova Analytics",
     layout="wide",
     page_icon="CN"
 )
 
-# Auto-refresh the page every 10 seconds to simulate live incoming data
+
 refresh_count = st_autorefresh(interval=10_000, key="refresh")
 
-# Base URL template for loading each month tab from the published Google Sheet.
-# The {gid} placeholder gets replaced with the specific tab ID for each month.
+
 BASE_MONTH_URL = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vRck5N3u4GpJFRIFRekZ-slAcRe68Fyz1Zmxgj3gMbvkMBb0HBUQ1DmGh12MvU3QWEAlxZ1_wFEzz1K"
     "/pub?gid={gid}&single=true&output=csv"
 )
 
-# Each month has its own published tab in Google Sheets.
-# The gid is the unique identifier for that tab and is found in the published CSV link.
-# Only the selected month is fetched, which keeps loading fast.
+
 MONTH_GIDS = {
     "2026-01": "190784173",
     "2026-02": "892438961",
@@ -39,26 +42,26 @@ MONTH_GIDS = {
     "2026-12": "616073200",
 }
 
-# Sidebar toggle so users can switch between dark and light display modes
+
 st.sidebar.markdown("### Display")
 light_mode = st.sidebar.toggle("Light mode", value=False)
 st.sidebar.markdown("---")
 
-# Two complete sets of colour variables, one for light mode and one for dark mode.
-# Every colour used in the dashboard references these variables so switching themes
-# changes the entire look in one go.
+
 if light_mode:
-    APP_BG = "#f0f4f9"
+    APP_BG = "#f3f7fb"
     SIDEBAR_BG = "#ffffff"
     TEXT_MAIN = "#0f172a"
     TEXT_MUTED = "#475569"
     CARD_BG = "#ffffff"
-    CARD_BORDER = "#dbe3ef"
+    CARD_BORDER = "#d8e2ef"
     KPI_BG = "#ffffff"
     ACCENT = "#2563eb"
+    ACCENT_2 = "#0f766e"
     ACCENT_SOFT = "rgba(37,99,235,0.12)"
     GRID = "rgba(15,23,42,0.10)"
-    SHADOW = "0 4px 18px rgba(15,23,42,0.08)"
+    SHADOW = "0 8px 24px rgba(15,23,42,0.08)"
+    MOVING_AVG = "#d97706"
 else:
     APP_BG = "linear-gradient(160deg, #060d1a 0%, #0b1527 100%)"
     SIDEBAR_BG = "#080f1e"
@@ -68,13 +71,13 @@ else:
     CARD_BORDER = "rgba(255,255,255,0.08)"
     KPI_BG = "rgba(14,22,42,0.97)"
     ACCENT = "#60a5fa"
+    ACCENT_2 = "#22c55e"
     ACCENT_SOFT = "rgba(96,165,250,0.14)"
     GRID = "rgba(255,255,255,0.06)"
     SHADOW = "0 8px 28px rgba(0,0,0,0.28)"
+    MOVING_AVG = "#facc15"
 
-# Custom CSS injected into the app to control fonts, backgrounds, card styles,
-# and KPI card appearance. The f-string means theme colour variables are applied
-# at the moment the page renders.
+
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap');
@@ -86,8 +89,8 @@ html, body, .stApp {{
 }}
 
 .block-container {{
-    max-width: 1400px;
-    padding-top: 1.4rem;
+    max-width: 1450px;
+    padding-top: 1.2rem;
     padding-bottom: 2.5rem;
 }}
 
@@ -100,28 +103,32 @@ section[data-testid="stSidebar"] * {{
     color: {TEXT_MAIN} !important;
 }}
 
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] div {{
-    color: {TEXT_MAIN} !important;
-}}
-
-[data-baseweb="select"] * {{
-    color: {TEXT_MAIN} !important;
-}}
-
-[data-baseweb="select"] > div {{
+div[data-baseweb="select"] > div {{
     background-color: {CARD_BG} !important;
     border: 1px solid {CARD_BORDER} !important;
+    color: {TEXT_MAIN} !important;
 }}
 
-[data-baseweb="popover"] * {{
+div[data-baseweb="select"] * {{
     color: {TEXT_MAIN} !important;
+}}
+
+div[data-baseweb="popover"], div[data-baseweb="popover"] * {{
+    background-color: {CARD_BG} !important;
+    color: {TEXT_MAIN} !important;
+}}
+
+ul[role="listbox"], li[role="option"] {{
+    background-color: {CARD_BG} !important;
+    color: {TEXT_MAIN} !important;
+}}
+
+li[role="option"]:hover {{
+    background-color: {ACCENT_SOFT} !important;
 }}
 
 h1 {{
-    font-size: 2.4rem !important;
+    font-size: 2.35rem !important;
     font-weight: 800 !important;
     color: {TEXT_MAIN} !important;
     letter-spacing: -0.04em !important;
@@ -129,34 +136,58 @@ h1 {{
 }}
 
 h2, h3 {{
-    font-size: 1.1rem !important;
-    font-weight: 700 !important;
     color: {TEXT_MAIN} !important;
-    margin-bottom: 0.1rem !important;
+    font-weight: 800 !important;
+}}
+
+.page-subtitle {{
+    color: {TEXT_MUTED};
+    font-size: 1rem;
+    margin-bottom: 1.1rem;
+}}
+
+.story-banner {{
+    background: linear-gradient(135deg, {ACCENT_SOFT}, rgba(34,197,94,0.08));
+    border: 1px solid {CARD_BORDER};
+    border-radius: 18px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+    box-shadow: {SHADOW};
+}}
+
+.story-banner strong {{
+    color: {TEXT_MAIN};
+}}
+
+.story-banner p {{
+    color: {TEXT_MUTED};
+    margin: 0.25rem 0 0 0;
+    line-height: 1.55;
 }}
 
 .kpi {{
     background: {KPI_BG};
     border: 1px solid {CARD_BORDER};
-    border-radius: 16px;
-    padding: 1rem 1.1rem 0.9rem;
+    border-radius: 18px;
+    padding: 1rem 1.1rem;
     box-shadow: {SHADOW};
+    min-height: 120px;
 }}
 
 .kpi-label {{
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-size: 0.74rem;
+    font-weight: 700;
     color: {TEXT_MUTED};
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 0.4rem;
+    letter-spacing: 0.07em;
+    margin-bottom: 0.45rem;
 }}
 
 .kpi-value {{
-    font-size: 2rem;
+    font-size: 1.85rem;
     font-weight: 800;
     color: {TEXT_MAIN};
-    line-height: 1;
+    line-height: 1.1;
     font-family: 'DM Mono', monospace;
 }}
 
@@ -165,32 +196,32 @@ h2, h3 {{
 }}
 
 .kpi-sub {{
-    font-size: 0.76rem;
-    color: {ACCENT};
-    margin-top: 0.35rem;
+    font-size: 0.78rem;
+    color: {TEXT_MUTED};
+    margin-top: 0.5rem;
 }}
 
 .insight {{
     background: {CARD_BG};
     border: 1px solid {CARD_BORDER};
     border-left: 3px solid {ACCENT};
-    border-radius: 10px;
-    padding: 0.8rem 1rem;
-    margin-bottom: 0.6rem;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.65rem;
 }}
 
 .insight p {{
-    font-size: 0.88rem;
     color: {TEXT_MAIN};
     margin: 0;
-    line-height: 1.65;
+    line-height: 1.6;
+    font-size: 0.9rem;
 }}
 
 .section-caption {{
     color: {TEXT_MUTED};
-    font-size: 0.85rem;
-    margin-top: -0.1rem;
-    margin-bottom: 0.6rem;
+    font-size: 0.86rem;
+    margin-top: -0.25rem;
+    margin-bottom: 0.7rem;
 }}
 
 [data-testid="stVerticalBlockBorderWrapper"] {{
@@ -208,14 +239,19 @@ h2, h3 {{
 [data-testid="stMetricLabel"] {{
     color: {TEXT_MUTED} !important;
 }}
+
+/* Keep radio button labels readable in both dark mode and light mode. */
+div[role="radiogroup"] label,
+div[role="radiogroup"] label span,
+div[role="radiogroup"] p {{
+    color: {TEXT_MAIN} !important;
+    opacity: 1 !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
 
-# This function cleans up a raw dataframe after it is loaded from Google Sheets.
-# It strips whitespace from column names and text values, then combines the
-# separate date and time columns into one proper datetime column for filtering
-# and charting. Rows where the datetime could not be parsed are dropped.
+# Clean the loaded web log dataset.
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [c.strip() for c in df.columns]
 
@@ -229,7 +265,6 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
-    # dayfirst=True tells pandas the dates are in dd/mm/yyyy format
     df["datetime"] = pd.to_datetime(
         df["date"].astype(str).str.strip() + " " + df["time"].astype(str).str.strip(),
         dayfirst=True,
@@ -238,40 +273,278 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.dropna(subset=["datetime"])
     df = df.sort_values("datetime").reset_index(drop=True)
-
     return df
 
 
-# This function fetches one month of data from the published Google Sheet CSV.
-# Results are cached for 30 minutes so switching between months does not
-# trigger a fresh network request every time.
-@st.cache_data(ttl=1800, show_spinner=False)
+# Load only the selected monthly partition through the Flask API.
+# The API acts as a separate data access layer between Streamlit and Google Sheets.
+# This makes the dashboard API-driven while keeping the rest of the dashboard logic unchanged.
+@st.cache_data(ttl=60, show_spinner=False)
 def load_month_data(month_key: str) -> pd.DataFrame:
-    gid = MONTH_GIDS[month_key]
-    url = BASE_MONTH_URL.format(gid=gid)
-    df = pd.read_csv(url, low_memory=False)
-    return clean_dataframe(df)
+    api_url = f"http://127.0.0.1:5000/api/logs/{month_key}"
+
+    try:
+        response = requests.get(api_url, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+        df = pd.DataFrame(data["records"])
+
+        return clean_dataframe(df)
+
+    except Exception as e:
+        st.error(f"Data Pipeline Offline: {e}")
+        return pd.DataFrame()
 
 
+# Shared Plotly layout for consistent chart styling.
+def make_base_layout():
+    return dict(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="DM Sans, sans-serif", color=TEXT_MAIN, size=12),
+        margin=dict(l=8, r=8, t=20, b=8),
+        xaxis=dict(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT_MAIN)),
+        yaxis=dict(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT_MAIN)),
+    )
+
+
+BASE = make_base_layout()
+
+
+# Reusable KPI card component.
+def kpi_card(column, label, value, sub="", accent=False):
+    cls = "kpi kpi-accent" if accent else "kpi"
+    column.markdown(
+        f"""
+        <div class="{cls}">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="kpi-sub">{sub}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# Reusable insight card component.
+def insight(text):
+    st.markdown(f'<div class="insight"><p>{text}</p></div>', unsafe_allow_html=True)
+
+
+# Reusable page introduction component.
+def page_intro(title, subtitle, strategic_title, strategic_text):
+    st.title(title)
+    st.markdown(f'<div class="page-subtitle">{subtitle}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="story-banner">
+            <strong>{strategic_title}</strong>
+            <p>{strategic_text}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# Horizontal bar chart for ranked categories.
+def horizontal_bar(df, x_col, y_col, x_title, height=330):
+    fig = go.Figure(go.Bar(
+        x=df[x_col],
+        y=df[y_col],
+        orientation="h",
+        marker=dict(
+            color=df[x_col],
+            colorscale=[[0, ACCENT_SOFT], [1, ACCENT]],
+            showscale=False
+        ),
+        marker_line_width=0,
+        hovertemplate="%{y}: %{x:,}<extra></extra>"
+    ))
+    fig.update_layout(**BASE, xaxis_title=x_title, height=height)
+    return fig
+
+
+# Vertical bar chart for categorical comparisons.
+def vertical_bar(df, x_col, y_col, x_title, y_title, height=330):
+    fig = go.Figure(go.Bar(
+        x=df[x_col],
+        y=df[y_col],
+        marker=dict(
+            color=df[y_col],
+            colorscale=[[0, ACCENT_SOFT], [1, ACCENT]],
+            showscale=False
+        ),
+        marker_line_width=0,
+        hovertemplate="%{x}: %{y:,}<extra></extra>"
+    ))
+    fig.update_layout(**BASE, xaxis_title=x_title, yaxis_title=y_title, height=height)
+    return fig
+
+
+# Line chart for trend analysis.
+# A 3-day moving average is added to support basic predictive trend interpretation.
+def line_chart(df, x_col, y_col, x_title, y_title, height=330):
+    chart_df = df.copy()
+
+    fig = go.Figure(go.Scatter(
+        x=chart_df[x_col],
+        y=chart_df[y_col],
+        mode="lines+markers",
+        name="Daily Volume",
+        line=dict(color=ACCENT, width=2.5),
+        marker=dict(size=4, color=ACCENT),
+        fill="tozeroy",
+        fillcolor=ACCENT_SOFT,
+        hovertemplate="%{x}: %{y:,}<extra></extra>"
+    ))
+
+    if len(chart_df) >= 3:
+        chart_df["moving_avg"] = chart_df[y_col].rolling(window=3).mean()
+
+        fig.add_trace(go.Scatter(
+            x=chart_df[x_col],
+            y=chart_df["moving_avg"],
+            mode="lines",
+            name="3-Day Moving Average",
+            line=dict(color=MOVING_AVG, width=2.2, dash="dash"),
+            hovertemplate="%{x}: %{y:,.0f}<extra></extra>"
+        ))
+
+    fig.update_layout(
+        **BASE,
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        height=height,
+        legend=dict(
+            orientation="h",
+            y=1.08,
+            x=0,
+            font=dict(color=TEXT_MAIN)
+        )
+    )
+    return fig
+
+
+# Geographic demand map.
+# Regional mode focuses on Africa, International mode displays the world map,
+# and a selected single country zooms directly to that country.
+def country_demand_map(country_counts, map_scope="Regional", selected_country="All countries", height=360):
+
+    country_iso = {
+        "Botswana": "BWA",
+        "South Africa": "ZAF",
+        "Zimbabwe": "ZWE",
+        "Zambia": "ZMB",
+        "Namibia": "NAM",
+        "Mozambique": "MOZ",
+        "Lesotho": "LSO",
+        "Eswatini": "SWZ",
+        "Swaziland": "SWZ",
+        "Angola": "AGO",
+        "Malawi": "MWI",
+        "Kenya": "KEN",
+        "Nigeria": "NGA",
+        "United Kingdom": "GBR",
+        "UK": "GBR",
+        "United States": "USA",
+        "USA": "USA",
+        "India": "IND"
+    }
+
+    map_df = country_counts.copy()
+    map_df["iso_alpha"] = map_df["country"].map(country_iso)
+    map_df = map_df.dropna(subset=["iso_alpha"])
+
+    fig = go.Figure(
+        go.Choropleth(
+            locations=map_df["iso_alpha"],
+            z=map_df["count"],
+            text=map_df["country"],
+            locationmode="ISO-3",
+            colorscale=[
+                [0, "rgba(96,165,250,0.18)"],
+                [0.45, "#2563eb"],
+                [1, "#60a5fa"]
+            ],
+            marker_line_color="rgba(255,255,255,0.18)",
+            marker_line_width=0.7,
+            colorbar=dict(
+                title="Demand",
+                thickness=12,
+                len=0.72,
+                tickfont=dict(color=TEXT_MAIN)
+            ),
+            hovertemplate="<b>%{text}</b><br>Demand: %{z:,}<extra></extra>"
+        )
+    )
+
+    geo_settings = dict(
+        projection_type="natural earth",
+        showframe=False,
+        showcoastlines=True,
+        coastlinecolor="rgba(255,255,255,0.16)",
+        showcountries=True,
+        countrycolor="rgba(255,255,255,0.12)",
+        showland=True,
+        landcolor="rgba(15,23,42,0.45)",
+        showocean=True,
+        oceancolor="rgba(6,13,26,0.8)",
+        bgcolor="rgba(0,0,0,0)"
+    )
+
+    # When one country is selected in the sidebar, zoom directly to that country.
+    if selected_country != "All countries":
+        geo_settings["fitbounds"] = "locations"
+        geo_settings["visible"] = True
+
+    # Otherwise, Regional stays Africa and International stays world.
+    elif map_scope == "Regional":
+        geo_settings["scope"] = "africa"
+
+    fig.update_geos(**geo_settings)
+    fig.update_layout(**BASE, height=height)
+
+    return fig
+
+
+# Sidebar navigation for stakeholder-specific views.
+st.sidebar.markdown("### Navigation")
+selected_view = st.sidebar.radio(
+    "Stakeholder view",
+    [
+        "Executive Overview",
+        "Sales Intelligence",
+        "Marketing Analytics",
+        "Operations Intelligence"
+    ],
+    label_visibility="collapsed"
+)
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("### Filters")
 
-# Month selector — changing this triggers a fresh data load for that month only
+
+# Month selector for monthly partition loading.
 selected_month = st.sidebar.selectbox(
     "Month",
     list(MONTH_GIDS.keys()),
-    index=3
+    index=4
 )
 
-# Load only the selected month's data and show a spinner while it fetches
+
+# Load selected month.
 with st.spinner(f"Loading {selected_month} data..."):
     df_source = load_month_data(selected_month)
 
+
+# Live simulation settings.
 MAX_ROWS = len(df_source)
 START_ROWS = min(15_000, MAX_ROWS)
-ROWS_PER_BATCH = 2_500
+ROWS_PER_BATCH = 250
 
-# Session state keeps track of how many rows have been revealed so far
-# and which month is currently active so we can detect when the user switches
+
+# Session state stores the active month and number of visible rows.
 if "loaded_month" not in st.session_state:
     st.session_state.loaded_month = selected_month
 
@@ -281,34 +554,48 @@ if "live_row_count" not in st.session_state:
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = refresh_count
 
-# When the user picks a different month, reset the row counter back to the start
+
+# Reset row counter when the selected month changes.
 if st.session_state.loaded_month != selected_month:
     st.session_state.loaded_month = selected_month
     st.session_state.live_row_count = START_ROWS
     st.session_state.last_refresh_count = refresh_count
 
-# Each time the 10-second autorefresh fires, reveal the next batch of rows
-if refresh_count != st.session_state.last_refresh_count:
-    st.session_state.last_refresh_count = refresh_count
-    st.session_state.live_row_count = min(
-        st.session_state.live_row_count + ROWS_PER_BATCH,
-        MAX_ROWS
-    )
 
-# Slice the full month dataframe down to however many rows are currently live
+# May 2026 is treated as the live month.
+# Other months show the full static historical partition.
+if selected_month == "2026-05":
+    if refresh_count != st.session_state.last_refresh_count:
+        st.session_state.last_refresh_count = refresh_count
+        next_count = st.session_state.live_row_count + ROWS_PER_BATCH
+
+        if next_count >= MAX_ROWS:
+            st.session_state.live_row_count = START_ROWS
+        else:
+            st.session_state.live_row_count = next_count
+else:
+    st.session_state.live_row_count = MAX_ROWS
+
+
+# Use only the currently visible portion of the month.
 df = df_source.head(st.session_state.live_row_count).copy()
 
+
+# Stop execution if the selected data does not load.
+if df.empty:
+    st.error("No data loaded. Check your published Google Sheet month tabs or Flask API.")
+    st.stop()
+
+
+# Show data loading status in the sidebar.
 st.sidebar.caption(
-    f"Fast month-tab loading<br>"
+    f"Fast API month-tab loading<br>"
     f"Live: **{st.session_state.live_row_count:,}** of **{MAX_ROWS:,}** records loaded",
     unsafe_allow_html=True
 )
 
-if df.empty:
-    st.error("No data loaded. Check your published Google Sheet month tabs.")
-    st.stop()
 
-# Build the dropdown options from whatever values exist in the live data slice
+# Build filter options dynamically from the loaded dataset.
 countries_list = (
     ["All countries"] + sorted(df["country"].dropna().unique().tolist())
     if "country" in df.columns else ["All countries"]
@@ -324,11 +611,12 @@ campaign_list = (
     if "campaign_source" in df.columns else ["All sources"]
 )
 
+
+# Apply sidebar filters.
 selected_country = st.sidebar.selectbox("Country", countries_list)
 selected_service = st.sidebar.selectbox("Service category", services_list)
 selected_campaign = st.sidebar.selectbox("Campaign source", campaign_list)
 
-# Apply each active filter in turn to produce the final subset used by all charts
 filtered_df = df.copy()
 
 if selected_country != "All countries":
@@ -344,7 +632,8 @@ if filtered_df.empty:
     st.warning("No data matches the selected filters. Try adjusting the filters.")
     st.stop()
 
-# KPI calculations — each metric is derived from the filtered dataframe
+
+# Core KPI calculations.
 total_visits = len(filtered_df)
 
 unique_visitors = (
@@ -359,22 +648,94 @@ conversions = (
 
 conversion_rate = (conversions / total_visits * 100) if total_visits > 0 else 0
 
-# Lowercase the interaction type column once so all keyword searches are consistent
+
+# Convert interaction types to lowercase once for consistent keyword matching.
 interaction_series = (
     filtered_df["interaction_type"].astype(str).str.lower()
     if "interaction_type" in filtered_df.columns
     else pd.Series([], dtype="object")
 )
 
+
+# Stakeholder-specific business indicators.
 demo_requests = interaction_series.str.contains("demo", na=False).sum()
 ai_requests = interaction_series.str.contains("ai advisory|advisory", na=False).sum()
-event_interest = interaction_series.str.contains("event", na=False).sum()
+event_interest = interaction_series.str.contains("event|webinar", na=False).sum()
+consultation_requests = interaction_series.str.contains("consultation", na=False).sum()
+risk_requests = interaction_series.str.contains("risk", na=False).sum()
+prototype_enquiries = interaction_series.str.contains("prototype", na=False).sum()
 
 service_requests = interaction_series.str.contains(
-    "request|enquiry|interest|consultation", na=False
+    "request|enquiry|interest|consultation|demo|advisory|risk|prototype|event|webinar",
+    na=False
 ).sum()
 
-# Aggregations that power the charts below
+high_intent_leads = (
+    demo_requests +
+    consultation_requests +
+    ai_requests +
+    risk_requests +
+    prototype_enquiries
+)
+
+
+# Estimated pipeline value.
+# These values are simple assumptions used to translate engagement into business potential.
+estimated_revenue = (
+    (demo_requests * 850) +
+    (consultation_requests * 700) +
+    (ai_requests * 450) +
+    (risk_requests * 650) +
+    (prototype_enquiries * 900)
+)
+
+
+# Advanced business health measures.
+# These derived measures move the dashboard beyond simple counts and support
+# higher-level business decision-making.
+lead_weights = {
+    "demo": 10,
+    "consultation": 8,
+    "advisory": 7,
+    "risk": 6,
+    "prototype": 6,
+    "webinar": 3,
+    "event": 3
+}
+
+
+def calculate_lead_quality_score(text):
+    text = str(text).lower()
+    score = 0
+
+    for keyword, weight in lead_weights.items():
+        if keyword in text:
+            score += weight
+
+    return score
+
+
+if "interaction_type" in filtered_df.columns:
+    filtered_df["lead_quality_score"] = filtered_df["interaction_type"].apply(calculate_lead_quality_score)
+    total_lead_quality_score = int(filtered_df["lead_quality_score"].sum())
+else:
+    total_lead_quality_score = 0
+
+
+# Server Reliability Index.
+# This measures the share of requests that did not result in 4xx or 5xx server/client errors.
+if "status_code" in filtered_df.columns:
+    status_as_text = filtered_df["status_code"].astype(str)
+    error_count = int(status_as_text.str.startswith(("4", "5")).sum())
+    error_rate = (error_count / total_visits * 100) if total_visits > 0 else 0
+    server_reliability = 100 - error_rate
+else:
+    error_count = 0
+    error_rate = 0
+    server_reliability = 100
+
+
+# Aggregations used for charts.
 service_counts = (
     filtered_df["service_category"].value_counts().reset_index()
     if "service_category" in filtered_df.columns
@@ -389,7 +750,8 @@ country_counts = (
 )
 country_counts.columns = ["country", "count"]
 
-# Campaign conversion table: total visits and total conversions grouped by source
+
+# Campaign performance table.
 campaign_conv = pd.DataFrame()
 
 if "campaign_source" in filtered_df.columns and "is_conversion" in filtered_df.columns:
@@ -407,7 +769,8 @@ if "campaign_source" in filtered_df.columns and "is_conversion" in filtered_df.c
         campaign_conv["conversions"] / campaign_conv["total"] * 100
     ).round(1)
 
-# Daily event counts used by the activity trend line chart
+
+# Daily trend data.
 trend_df = pd.DataFrame(columns=["date", "count"])
 
 if "datetime" in filtered_df.columns and filtered_df["datetime"].notna().any():
@@ -419,351 +782,607 @@ if "datetime" in filtered_df.columns and filtered_df["datetime"].notna().any():
     )
     trend_df.columns = ["date", "count"]
 
+
+# Peak Demand Hour.
+# This identifies the busiest hour of activity in the selected dataset.
+if "datetime" in filtered_df.columns and filtered_df["datetime"].notna().any():
+    hourly_counts = (
+        filtered_df
+        .assign(hour=filtered_df["datetime"].dt.hour)
+        .groupby("hour")
+        .size()
+        .reset_index(name="visits")
+    )
+
+    if not hourly_counts.empty:
+        peak_hour = int(hourly_counts.loc[hourly_counts["visits"].idxmax(), "hour"])
+        peak_hour_visits = int(hourly_counts["visits"].max())
+    else:
+        peak_hour = 0
+        peak_hour_visits = 0
+else:
+    hourly_counts = pd.DataFrame(columns=["hour", "visits"])
+    peak_hour = 0
+    peak_hour_visits = 0
+
+
+# Interaction type distribution.
 interaction_mix = pd.DataFrame(columns=["interaction_type", "count"])
 
 if "interaction_type" in filtered_df.columns:
     interaction_mix = (
         filtered_df["interaction_type"]
         .value_counts()
-        .head(7)
+        .head(8)
         .reset_index()
     )
     interaction_mix.columns = ["interaction_type", "count"]
 
+
+# Device distribution.
 device_counts = pd.DataFrame(columns=["device_type", "count"])
 
 if "device_type" in filtered_df.columns:
     device_counts = filtered_df["device_type"].value_counts().reset_index()
     device_counts.columns = ["device_type", "count"]
 
-# Shared Plotly layout dictionary applied to every chart so they all look consistent
-BASE = dict(
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="DM Sans, sans-serif", color=TEXT_MAIN, size=12),
-    margin=dict(l=8, r=8, t=20, b=8),
-    xaxis=dict(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT_MAIN)),
-    yaxis=dict(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT_MAIN)),
-)
 
-# Page header and subtitle showing which month is currently selected
-st.title("CyberNova Analytics")
+# Status code distribution.
+status_counts = pd.DataFrame(columns=["status_code", "count"])
 
-st.markdown(
-    f'<div style="font-size:1rem;color:{TEXT_MUTED};margin-bottom:0.5rem;">'
-    f'Live Web Activity and Customer Demand Intelligence — {selected_month}</div>',
-    unsafe_allow_html=True
-)
+if "status_code" in filtered_df.columns:
+    status_counts = filtered_df["status_code"].value_counts().reset_index()
+    status_counts.columns = ["status_code", "count"]
 
-# Five KPI cards across the top of the page.
-# The conversion rate card uses the accent colour to draw attention to it.
-c1, c2, c3, c4, c5 = st.columns(5)
 
-kpi_items = [
-    (c1, "Total Visits", f"{total_visits:,}", "Live web activity", False),
-    (c2, "Unique Visitors", f"{unique_visitors:,}", "Distinct IPs", False),
-    (c3, "Conversion Rate", f"{conversion_rate:.1f}%", f"{conversions:,} conversions", True),
-    (c4, "Demo Requests", f"{demo_requests:,}", "High-intent signals", False),
-    (c5, "AI Advisory Requests", f"{ai_requests:,}", "Advisory engagement", False),
-]
-
-for col, label, value, sub, accent in kpi_items:
-    cls = "kpi kpi-accent" if accent else "kpi"
-    col.markdown(
-        f'<div class="{cls}"><div class="kpi-label">{label}</div>'
-        f'<div class="kpi-value">{value}</div>'
-        f'<div class="kpi-sub">{sub}</div></div>',
-        unsafe_allow_html=True
-    )
-
-st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-
-# Secondary row of supporting metrics below the main KPI cards
-s1, s2, s3, s4 = st.columns(4)
-
-s1.metric("Event Interest", f"{event_interest:,}")
-s2.metric("Total Service Reqs", f"{service_requests:,}")
-s3.metric("Conversions", f"{conversions:,}")
-s4.metric("Device Types", f"{device_counts['device_type'].nunique() if not device_counts.empty else 0}")
-
-st.markdown("<div style='height:0.7rem'></div>", unsafe_allow_html=True)
-
-# Row 1: horizontal bar chart showing which services get the most requests (left)
-# and a line chart showing how many events happened each day of the month (right)
-left, right = st.columns(2)
-
-with left.container(border=True):
-    st.subheader("Service Demand")
-    st.markdown(
-        '<div class="section-caption">Most requested services in the selected month.</div>',
-        unsafe_allow_html=True
-    )
-
-    if not service_counts.empty:
-        s = service_counts.sort_values("count")
-
-        fig = go.Figure(go.Bar(
-            x=s["count"],
-            y=s["service_category"],
-            orientation="h",
-            marker=dict(
-                color=s["count"],
-                colorscale=[[0, ACCENT_SOFT], [1, ACCENT]],
-                showscale=False
-            ),
-            marker_line_width=0,
-            hovertemplate="%{y}: %{x:,}<extra></extra>"
-        ))
-
-        fig.update_layout(**BASE, xaxis_title="Requests", height=340)
-        st.plotly_chart(fig, use_container_width=True)
-
-with right.container(border=True):
-    st.subheader("Website Activity Over Time")
-    st.markdown(
-        '<div class="section-caption">Daily event volume for the selected month.</div>',
-        unsafe_allow_html=True
-    )
-
-    if not trend_df.empty:
-        fig = go.Figure(go.Scatter(
-            x=trend_df["date"],
-            y=trend_df["count"],
-            mode="lines+markers",
-            line=dict(color=ACCENT, width=2.5),
-            marker=dict(size=4, color=ACCENT),
-            fill="tozeroy",
-            fillcolor=ACCENT_SOFT,
-            hovertemplate="%{x|%d %b}: %{y:,} events<extra></extra>"
-        ))
-
-        fig.update_layout(**BASE, xaxis_title="Date", yaxis_title="Events", height=340)
-        st.plotly_chart(fig, use_container_width=True)
-
-st.markdown("<div style='height:0.7rem'></div>", unsafe_allow_html=True)
-
-# Row 2: bar chart of traffic by country (left) and an overlaid bar chart
-# comparing total visits against conversions for each marketing channel (right)
-left2, right2 = st.columns(2)
-
-with left2.container(border=True):
-    st.subheader("Regional Demand")
-    st.markdown(
-        '<div class="section-caption">Traffic by country in the selected month.</div>',
-        unsafe_allow_html=True
-    )
-
-    if not country_counts.empty:
-        fig = go.Figure(go.Bar(
-            x=country_counts["country"],
-            y=country_counts["count"],
-            marker=dict(
-                color=country_counts["count"],
-                colorscale=[[0, ACCENT_SOFT], [1, ACCENT]],
-                showscale=False
-            ),
-            marker_line_width=0,
-            hovertemplate="%{x}: %{y:,}<extra></extra>"
-        ))
-
-        fig.update_layout(**BASE, xaxis_title="Country", yaxis_title="Visits", height=340)
-        st.plotly_chart(fig, use_container_width=True)
-
-with right2.container(border=True):
-    st.subheader("Marketing Channel Effectiveness")
-    st.markdown(
-        '<div class="section-caption">Total visits vs conversions per campaign source.</div>',
-        unsafe_allow_html=True
-    )
-
-    if not campaign_conv.empty:
-        c = campaign_conv.sort_values("conv_rate", ascending=True)
-
-        fig = go.Figure()
-
-        # The faded background bars represent total visit volume per channel
-        fig.add_trace(go.Bar(
-            x=c["total"],
-            y=c["campaign_source"],
-            orientation="h",
-            name="Total Visits",
-            marker_color=ACCENT_SOFT,
-            marker_line_width=0,
-            hovertemplate="%{y} visits: %{x:,}<extra></extra>"
-        ))
-
-        # The solid foreground bars show how many of those visits converted
-        fig.add_trace(go.Bar(
-            x=c["conversions"],
-            y=c["campaign_source"],
-            orientation="h",
-            name="Conversions",
-            marker_color=ACCENT,
-            marker_line_width=0,
-            hovertemplate="%{y} conversions: %{x:,}<extra></extra>"
-        ))
-
-        fig.update_layout(
-            **BASE,
-            barmode="overlay",
-            xaxis_title="Count",
-            height=340,
-            legend=dict(orientation="h", y=1.08, x=0, font=dict(color=TEXT_MAIN))
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-st.markdown("<div style='height:0.7rem'></div>", unsafe_allow_html=True)
-
-# Row 3: horizontal bar chart of what users are doing on the site (left)
-# and a donut chart showing the Desktop / Mobile / Tablet split (right)
-left3, right3 = st.columns(2)
-
-with left3.container(border=True):
-    st.subheader("Interaction Mix")
-    st.markdown(
-        '<div class="section-caption">What users are doing on the site.</div>',
-        unsafe_allow_html=True
-    )
-
-    if not interaction_mix.empty:
-        m = interaction_mix.sort_values("count")
-
-        fig = go.Figure(go.Bar(
-            x=m["count"],
-            y=m["interaction_type"],
-            orientation="h",
-            marker=dict(color=ACCENT, line_width=0),
-            hovertemplate="%{y}: %{x:,}<extra></extra>"
-        ))
-
-        fig.update_layout(**BASE, xaxis_title="Count", height=300)
-        st.plotly_chart(fig, use_container_width=True)
-
-with right3.container(border=True):
-    st.subheader("Device Breakdown")
-    st.markdown(
-        '<div class="section-caption">How visitors are accessing the site.</div>',
-        unsafe_allow_html=True
-    )
-
-    if not device_counts.empty:
-        # Three colours cover the three device categories
-        colors = [ACCENT, ACCENT_SOFT, TEXT_MUTED]
-
-        fig = go.Figure(go.Pie(
-            labels=device_counts["device_type"],
-            values=device_counts["count"],
-            marker=dict(
-                colors=colors[:len(device_counts)],
-                line=dict(color="rgba(0,0,0,0)", width=0)
-            ),
-            hole=0.52,
-            hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>",
-            textfont=dict(color=TEXT_MAIN)
-        ))
-
-        fig.update_layout(
-            **BASE,
-            height=300,
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                y=-0.1,
-                x=0.5,
-                xanchor="center",
-                font=dict(color=TEXT_MAIN)
-            )
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-st.markdown("<div style='height:0.7rem'></div>", unsafe_allow_html=True)
-
-# Pull the top values from each aggregation to use in the insight text below
+# Extract top values for insight cards.
 top_service = service_counts.iloc[0]["service_category"] if not service_counts.empty else "N/A"
 top_service_count = int(service_counts.iloc[0]["count"]) if not service_counts.empty else 0
 
 top_country = country_counts.iloc[0]["country"] if not country_counts.empty else "N/A"
 top_country_count = int(country_counts.iloc[0]["count"]) if not country_counts.empty else 0
 
-# Find which marketing channel has the highest conversion rate
-best_channel = ""
+best_channel = "N/A"
+best_channel_rate = 0
 
 if not campaign_conv.empty:
     best_row = campaign_conv.loc[campaign_conv["conv_rate"].idxmax()]
-    best_channel = (
-        f"<strong>{best_row['campaign_source']}</strong> leads with a "
-        f"<strong>{best_row['conv_rate']:.1f}%</strong> conversion rate "
-        f"({int(best_row['conversions'])} conversions from {int(best_row['total'])} visits)"
+    best_channel = best_row["campaign_source"]
+    best_channel_rate = best_row["conv_rate"]
+
+
+# Market Concentration Ratio.
+# This shows how dependent CyberNova is on its highest-demand country.
+market_concentration = (
+    (top_country_count / total_visits) * 100
+    if total_visits > 0 else 0
+)
+
+
+# Show whether the selected month is live or historical.
+if selected_month == "2026-05":
+    st.success("API-driven live dashboard active")
+else:
+    st.info("Static historical API data view")
+
+
+# Executive Overview.
+if selected_view == "Executive Overview":
+    page_intro(
+        "Executive Overview",
+        f"Strategic performance view for CyberNova Analytics — {selected_month}",
+        "Strategic performance intelligence",
+        "This view consolidates revenue potential, conversion strength, regional demand, service performance, and business health into a concise executive decision layer."
     )
 
-# Business insights section — plain English summary of what the data is showing.
-# Each insight card is generated dynamically from the filtered data so it always
-# reflects the current month and filter selection.
-with st.container(border=True):
-    st.subheader("Business Insights")
+    st.subheader("Business Health Metrics")
     st.markdown(
-        f'<div class="section-caption">Interpretation of the current filtered view for {selected_month}.</div>',
+        '<div class="section-caption">Derived business measures that support sales prioritisation, reliability monitoring, regional expansion, and operational planning.</div>',
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        f'<div class="insight"><p><strong>{top_service}</strong> generated the highest customer '
-        f'activity with <strong>{top_service_count:,}</strong> interactions. '
-        f'It is currently the strongest entry point into the service funnel.</p></div>',
-        unsafe_allow_html=True
+    bh1, bh2, bh3, bh4 = st.columns(4)
+
+    kpi_card(
+        bh1,
+        "Lead Quality Score",
+        f"{total_lead_quality_score:,}",
+        "Weighted sales opportunity score",
+        True
     )
 
-    st.markdown(
-        f'<div class="insight"><p><strong>{top_country}</strong> is the top traffic source with '
-        f'<strong>{top_country_count:,}</strong> visits, making it the most immediate market '
-        f'opportunity in this period.</p></div>',
-        unsafe_allow_html=True
+    kpi_card(
+        bh2,
+        "Server Reliability",
+        f"{server_reliability:.1f}%",
+        f"{error_rate:.1f}% error rate"
     )
 
-    st.markdown(
-        f'<div class="insight"><p>The conversion rate is <strong>{conversion_rate:.1f}%</strong>. '
-        f'<strong>{conversions:,}</strong> of {total_visits:,} interactions resulted in a '
-        f'commercially relevant action such as a demo request or advisory engagement.</p></div>',
-        unsafe_allow_html=True
+    kpi_card(
+        bh3,
+        "Market Concentration",
+        f"{market_concentration:.1f}%",
+        f"Top market: {top_country}"
     )
 
-    if best_channel:
+    kpi_card(
+        bh4,
+        "Peak Demand Hour",
+        f"{peak_hour}:00",
+        f"{peak_hour_visits:,} visits recorded"
+    )
+
+    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    kpi_card(c1, "Pipeline Revenue", f"BWP {estimated_revenue:,.0f}", "Estimated commercial value", True)
+    kpi_card(c2, "Conversion Rate", f"{conversion_rate:.1f}%", f"{conversions:,} conversions", True)
+    kpi_card(c3, "Total Requests", f"{service_requests:,}", "Service-related demand")
+    kpi_card(c4, "Top Region", f"{top_country}", f"{top_country_count:,} visits")
+    kpi_card(c5, "Top Service", f"{top_service}", f"{top_service_count:,} engagements")
+
+    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+
+    left, right = st.columns([1.15, 0.85])
+
+    with left.container(border=True):
+        st.subheader("Growth and Demand Trend")
         st.markdown(
-            f'<div class="insight"><p>Among marketing channels, {best_channel}. '
-            f'This channel should be prioritised in budget allocation.</p></div>',
+            '<div class="section-caption">Daily traffic pattern with a 3-day moving average for basic trend interpretation.</div>',
+            unsafe_allow_html=True
+        )
+        if not trend_df.empty:
+            st.plotly_chart(line_chart(trend_df, "date", "count", "Date", "Events", 360), use_container_width=True)
+
+    with right.container(border=True):
+        st.subheader("Conversion Funnel")
+        st.markdown(
+            '<div class="section-caption">Progression from website activity to high-value business outcomes.</div>',
             unsafe_allow_html=True
         )
 
-    if demo_requests > 0:
+        funnel_values = [total_visits, service_requests, high_intent_leads, conversions]
+        funnel_labels = ["Visits", "Service Requests", "High-Intent Leads", "Conversions"]
+
+        fig = go.Figure(go.Funnel(
+            y=funnel_labels,
+            x=funnel_values,
+            marker=dict(color=[ACCENT_SOFT, ACCENT_SOFT, ACCENT, ACCENT_2]),
+            textinfo="value+percent initial"
+        ))
+        fig.update_layout(**BASE, height=360)
+        st.plotly_chart(fig, use_container_width=True)
+
+    left2, right2 = st.columns(2)
+
+    with left2.container(border=True):
+        st.subheader("Regional Demand Map")
         st.markdown(
-            f'<div class="insight"><p><strong>{demo_requests:,}</strong> demo requests were recorded '
-            f'in this period. These are high-intent leads and should be followed up by the sales '
-            f'team promptly.</p></div>',
+            '<div class="section-caption">Geographic distribution of CyberNova demand by country.</div>',
             unsafe_allow_html=True
         )
 
-# Table showing the 25 most recent interactions from the filtered data
-display_cols = [
-    c for c in [
-        "datetime", "country", "resource", "service_category",
-        "interaction_type", "is_conversion", "status_code",
-        "campaign_source", "device_type"
+        executive_map_scope = st.radio(
+            "Map view",
+            ["Regional", "International"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="executive_map_scope"
+        )
+
+        if not country_counts.empty:
+            st.plotly_chart(
+                country_demand_map(
+                    country_counts,
+                    map_scope=executive_map_scope,
+                    selected_country=selected_country,
+                    height=420
+                ),
+                use_container_width=True
+            )
+
+    with right2.container(border=True):
+        st.subheader("Top Services")
+        st.markdown(
+            '<div class="section-caption">Services attracting the strongest market interest.</div>',
+            unsafe_allow_html=True
+        )
+        if not service_counts.empty:
+            s = service_counts.sort_values("count")
+            st.plotly_chart(horizontal_bar(s, "count", "service_category", "Requests", 360), use_container_width=True)
+
+    with st.container(border=True):
+        st.subheader("Executive Insights")
+        insight(f"<strong>{top_country}</strong> is the strongest current market with <strong>{top_country_count:,}</strong> visits, indicating a priority region for continued commercial attention.")
+        insight(f"<strong>{top_service}</strong> leads service demand with <strong>{top_service_count:,}</strong> engagements, showing the strongest area of customer interest.")
+        insight(f"The dashboard estimates <strong>BWP {estimated_revenue:,.0f}</strong> in pipeline value from high-intent activity, giving management a practical commercial performance indicator.")
+        insight(f"The conversion rate is <strong>{conversion_rate:.1f}%</strong>, while the weighted lead quality score is <strong>{total_lead_quality_score:,}</strong>, helping executives compare volume against lead value.")
+        insight(f"Server reliability is <strong>{server_reliability:.1f}%</strong>, with peak demand occurring around <strong>{peak_hour}:00</strong>, supporting operational planning and capacity decisions.")
+
+
+# Sales Intelligence.
+elif selected_view == "Sales Intelligence":
+    page_intro(
+        "Sales Intelligence",
+        f"Lead prioritisation and conversion opportunity view — {selected_month}",
+        "Commercial opportunity intelligence",
+        "This view identifies high-intent customer actions and highlights where the sales team should focus follow-up to improve conversion outcomes."
+    )
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    kpi_card(c1, "Lead Quality Score", f"{total_lead_quality_score:,}", "Weighted lead value", True)
+    kpi_card(c2, "Demo Requests", f"{demo_requests:,}", "Immediate follow-up leads", True)
+    kpi_card(c3, "Consultations", f"{consultation_requests:,}", "Advisory sales interest")
+    kpi_card(c4, "Conversions", f"{conversions:,}", "Confirmed high-value actions")
+    kpi_card(c5, "Sales Conversion", f"{conversion_rate:.1f}%", "Filtered conversion rate")
+
+    left, right = st.columns(2)
+
+    with left.container(border=True):
+        st.subheader("Sales Lead Funnel")
+        st.markdown(
+            '<div class="section-caption">Progression from visitor traffic to sales-ready opportunities.</div>',
+            unsafe_allow_html=True
+        )
+
+        funnel_values = [total_visits, service_requests, high_intent_leads, demo_requests + consultation_requests, conversions]
+        funnel_labels = ["Visits", "Service Requests", "High-Intent Leads", "Demo + Consultation", "Conversions"]
+
+        fig = go.Figure(go.Funnel(
+            y=funnel_labels,
+            x=funnel_values,
+            marker=dict(color=[ACCENT_SOFT, ACCENT_SOFT, ACCENT, ACCENT, ACCENT_2]),
+            textinfo="value+percent initial"
+        ))
+        fig.update_layout(**BASE, height=360)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with right.container(border=True):
+        st.subheader("Sales Opportunity Map")
+        st.markdown(
+            '<div class="section-caption">Country-level view of high-intent sales opportunities.</div>',
+            unsafe_allow_html=True
+        )
+
+        sales_df = filtered_df[
+            interaction_series.str.contains("demo|consultation|advisory|risk|prototype", na=False)
+        ].copy()
+
+        if not sales_df.empty and "country" in sales_df.columns:
+            sales_country = sales_df["country"].value_counts().reset_index()
+            sales_country.columns = ["country", "count"]
+
+            sales_map_scope = st.radio(
+                "Map view",
+                ["Regional", "International"],
+                horizontal=True,
+                label_visibility="collapsed",
+                key="sales_map_scope"
+            )
+
+            st.plotly_chart(
+                country_demand_map(
+                    sales_country,
+                    map_scope=sales_map_scope,
+                    selected_country=selected_country,
+                    height=420
+                ),
+                use_container_width=True
+            )
+        else:
+            st.info("No sales opportunity data available for this filter.")
+
+    left2, right2 = st.columns(2)
+
+    with left2.container(border=True):
+        st.subheader("High-Intent Interaction Mix")
+        st.markdown(
+            '<div class="section-caption">Sales-relevant actions customers are taking.</div>',
+            unsafe_allow_html=True
+        )
+
+        if "interaction_type" in filtered_df.columns:
+            sales_mix = filtered_df[
+                interaction_series.str.contains("demo|consultation|advisory|risk|prototype", na=False)
+            ]["interaction_type"].value_counts().reset_index()
+            sales_mix.columns = ["interaction_type", "count"]
+
+            if not sales_mix.empty:
+                st.plotly_chart(horizontal_bar(sales_mix.sort_values("count"), "count", "interaction_type", "Lead Count", 340), use_container_width=True)
+
+    with right2.container(border=True):
+        st.subheader("Sales Channel Efficiency")
+        st.markdown(
+            '<div class="section-caption">Campaign sources ranked by conversion efficiency.</div>',
+            unsafe_allow_html=True
+        )
+
+        if not campaign_conv.empty:
+            c = campaign_conv.sort_values("conv_rate")
+            fig = go.Figure(go.Bar(
+                x=c["conv_rate"],
+                y=c["campaign_source"],
+                orientation="h",
+                marker_color=ACCENT,
+                hovertemplate="%{y}: %{x:.1f}% conversion rate<extra></extra>"
+            ))
+            fig.update_layout(**BASE, xaxis_title="Conversion Rate (%)", height=340)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with st.container(border=True):
+        st.subheader("Sales Priorities")
+        insight(f"The weighted lead quality score is <strong>{total_lead_quality_score:,}</strong>, helping the sales team prioritise high-value actions rather than treating all clicks equally.")
+        insight(f"Prioritise the <strong>{demo_requests:,}</strong> demo requests because these users have already shown direct product interest.")
+        insight(f"<strong>{top_country}</strong> should be treated as the strongest sales territory in the current view.")
+        insight(f"Leads from <strong>{best_channel}</strong> should receive focused attention because this source currently has the highest conversion efficiency at <strong>{best_channel_rate:.1f}%</strong>.")
+        insight("Demo, consultation, advisory and risk assessment interactions should be treated as qualified lead indicators rather than ordinary traffic.")
+
+
+# Marketing Analytics.
+elif selected_view == "Marketing Analytics":
+    page_intro(
+        "Marketing Analytics",
+        f"Campaign performance and audience engagement view — {selected_month}",
+        "Market engagement intelligence",
+        "This view evaluates how acquisition channels, digital campaigns, events, and audience behaviour contribute to measurable engagement and conversion performance."
+    )
+
+    engagement_rate = (service_requests / total_visits * 100) if total_visits > 0 else 0
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    kpi_card(c1, "Website Traffic", f"{total_visits:,}", "Filtered visits", True)
+    kpi_card(c2, "Engagement Rate", f"{engagement_rate:.1f}%", "Service-related actions", True)
+    kpi_card(c3, "Event Interest", f"{event_interest:,}", "Webinar and event demand")
+    kpi_card(c4, "Campaign Conversions", f"{conversions:,}", "Converted interactions")
+    kpi_card(c5, "Best Channel", f"{best_channel}", f"{best_channel_rate:.1f}% conversion")
+
+    left, right = st.columns(2)
+
+    with left.container(border=True):
+        st.subheader("Campaign Performance")
+        st.markdown(
+            '<div class="section-caption">Total visits compared with conversions by acquisition source.</div>',
+            unsafe_allow_html=True
+        )
+
+        if not campaign_conv.empty:
+            c = campaign_conv.sort_values("total", ascending=True)
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=c["total"],
+                y=c["campaign_source"],
+                orientation="h",
+                name="Total Visits",
+                marker_color=ACCENT_SOFT,
+                hovertemplate="%{y}: %{x:,} visits<extra></extra>"
+            ))
+            fig.add_trace(go.Bar(
+                x=c["conversions"],
+                y=c["campaign_source"],
+                orientation="h",
+                name="Conversions",
+                marker_color=ACCENT,
+                hovertemplate="%{y}: %{x:,} conversions<extra></extra>"
+            ))
+            fig.update_layout(
+                **BASE,
+                barmode="overlay",
+                xaxis_title="Count",
+                height=360,
+                legend=dict(orientation="h", y=1.08, x=0, font=dict(color=TEXT_MAIN))
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with right.container(border=True):
+        st.subheader("Engagement Trend")
+        st.markdown(
+            '<div class="section-caption">Daily engagement pattern with a 3-day moving average for campaign monitoring.</div>',
+            unsafe_allow_html=True
+        )
+        if not trend_df.empty:
+            st.plotly_chart(line_chart(trend_df, "date", "count", "Date", "Events", 360), use_container_width=True)
+
+    left2, right2 = st.columns(2)
+
+    with left2.container(border=True):
+        st.subheader("Device Behaviour")
+        st.markdown(
+            '<div class="section-caption">How visitors access CyberNova digital content.</div>',
+            unsafe_allow_html=True
+        )
+
+        if not device_counts.empty:
+            fig = go.Figure(go.Pie(
+                labels=device_counts["device_type"],
+                values=device_counts["count"],
+                hole=0.55,
+                marker=dict(colors=[ACCENT, ACCENT_SOFT, TEXT_MUTED]),
+                hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>"
+            ))
+            fig.update_layout(
+                **BASE,
+                height=340,
+                legend=dict(
+                    orientation="h",
+                    y=-0.1,
+                    x=0.5,
+                    xanchor="center",
+                    font=dict(color=TEXT_MAIN)
+                )
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with right2.container(border=True):
+        st.subheader("Event and Webinar Engagement")
+        st.markdown(
+            '<div class="section-caption">Marketing demand linked to promotional events and awareness activities.</div>',
+            unsafe_allow_html=True
+        )
+
+        event_df = filtered_df[
+            interaction_series.str.contains("event|webinar", na=False)
+        ].copy()
+
+        if not event_df.empty and "campaign_source" in event_df.columns:
+            event_campaign = event_df["campaign_source"].value_counts().reset_index()
+            event_campaign.columns = ["campaign_source", "count"]
+            st.plotly_chart(horizontal_bar(event_campaign.sort_values("count"), "count", "campaign_source", "Event Interest", 340), use_container_width=True)
+        else:
+            st.info("No event or webinar engagement data available for this filter.")
+
+    with st.container(border=True):
+        st.subheader("Marketing Insights")
+        insight(f"<strong>{best_channel}</strong> is currently the most efficient acquisition source with a <strong>{best_channel_rate:.1f}%</strong> conversion rate.")
+        insight(f"The engagement rate is <strong>{engagement_rate:.1f}%</strong>, showing how many visitors moved beyond basic browsing into service-related actions.")
+        insight(f"<strong>{event_interest:,}</strong> event-related interactions indicate the level of market response to awareness and webinar activity.")
+        insight(f"Market concentration is <strong>{market_concentration:.1f}%</strong>, showing how much current demand depends on the leading country.")
+        insight("Marketing decisions should compare high-traffic sources against high-conversion sources before reallocating campaign effort.")
+
+
+# Operations Intelligence.
+else:
+    page_intro(
+        "Operations Intelligence",
+        f"Service monitoring and operational behaviour view — {selected_month}",
+        "Operational performance intelligence",
+        "This view monitors service demand, AI assistant usage, request behaviour, server reliability, and traffic timing patterns to support operational planning."
+    )
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    kpi_card(c1, "AI Requests", f"{ai_requests:,}", "Cyber assistant usage", True)
+    kpi_card(c2, "Service Demand", f"{service_requests:,}", "Operational workload", True)
+    kpi_card(c3, "Reliability", f"{server_reliability:.1f}%", f"{error_count:,} error responses")
+    kpi_card(c4, "Peak Hour", f"{peak_hour}:00", f"{peak_hour_visits:,} visits")
+    kpi_card(c5, "Status Types", f"{status_counts['status_code'].nunique() if not status_counts.empty else 0}", "Response groups")
+
+    left, right = st.columns(2)
+
+    with left.container(border=True):
+        st.subheader("Service Demand Distribution")
+        st.markdown(
+            '<div class="section-caption">Operational view of the most requested CyberNova services.</div>',
+            unsafe_allow_html=True
+        )
+        if not service_counts.empty:
+            st.plotly_chart(horizontal_bar(service_counts.sort_values("count"), "count", "service_category", "Requests", 360), use_container_width=True)
+
+    with right.container(border=True):
+        st.subheader("Interaction Mix")
+        st.markdown(
+            '<div class="section-caption">User activity patterns across the digital platform.</div>',
+            unsafe_allow_html=True
+        )
+        if not interaction_mix.empty:
+            st.plotly_chart(horizontal_bar(interaction_mix.sort_values("count"), "count", "interaction_type", "Count", 360), use_container_width=True)
+
+    left2, right2 = st.columns(2)
+
+    with left2.container(border=True):
+        st.subheader("Operational Traffic Trend")
+        st.markdown(
+            '<div class="section-caption">Daily volume pattern with a 3-day moving average for monitoring load and demand.</div>',
+            unsafe_allow_html=True
+        )
+        if not trend_df.empty:
+            st.plotly_chart(line_chart(trend_df, "date", "count", "Date", "Events", 340), use_container_width=True)
+
+    with right2.container(border=True):
+        st.subheader("Status Code Monitoring")
+        st.markdown(
+            '<div class="section-caption">Operational response monitoring from server logs, used to support the reliability index.</div>',
+            unsafe_allow_html=True
+        )
+
+        if not status_counts.empty:
+            status_counts["status_code"] = status_counts["status_code"].astype(str)
+            status_counts = status_counts.sort_values("count", ascending=True)
+
+            fig = go.Figure(go.Bar(
+                x=status_counts["count"],
+                y=status_counts["status_code"],
+                orientation="h",
+                marker=dict(
+                    color=status_counts["count"],
+                    colorscale=[[0, ACCENT_SOFT], [1, ACCENT]],
+                    showscale=False
+                ),
+                text=status_counts["count"],
+                texttemplate="%{text:,}",
+                textposition="auto",
+                hovertemplate="Status %{y}<br>Count: %{x:,}<extra></extra>"
+            ))
+
+            status_layout = BASE.copy()
+            status_layout["margin"] = dict(l=70, r=35, t=20, b=45)
+
+            fig.update_layout(
+                **status_layout,
+                height=340,
+                xaxis_title="Count",
+                yaxis_title="Status Code"
+            )
+
+            fig.update_xaxes(showgrid=True)
+            fig.update_yaxes(type="category")
+
+            st.plotly_chart(fig, use_container_width=True)
+
+    if not hourly_counts.empty:
+        with st.container(border=True):
+            st.subheader("Peak Demand Analysis")
+            st.markdown(
+                '<div class="section-caption">Hourly traffic distribution showing the strongest demand period for operational capacity planning.</div>',
+                unsafe_allow_html=True
+            )
+
+            fig = go.Figure(go.Bar(
+                x=hourly_counts["hour"],
+                y=hourly_counts["visits"],
+                marker=dict(
+                    color=hourly_counts["visits"],
+                    colorscale=[[0, ACCENT_SOFT], [1, ACCENT]],
+                    showscale=False
+                ),
+                hovertemplate="Hour %{x}:00<br>Visits: %{y:,}<extra></extra>"
+            ))
+
+            fig.update_layout(
+                **BASE,
+                height=330,
+                xaxis_title="Hour of Day",
+                yaxis_title="Visits"
+            )
+
+            fig.update_xaxes(dtick=1)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with st.container(border=True):
+        st.subheader("Operational Insights")
+        insight(f"AI advisory requests reached <strong>{ai_requests:,}</strong>, showing direct usage of CyberNova's AI-powered support capability.")
+        insight(f"<strong>{top_service}</strong> creates the largest service workload with <strong>{top_service_count:,}</strong> interactions.")
+        insight(f"Server reliability is <strong>{server_reliability:.1f}%</strong>, based on an error rate of <strong>{error_rate:.1f}%</strong> from 4xx and 5xx responses.")
+        insight(f"Peak demand occurs around <strong>{peak_hour}:00</strong>, when <strong>{peak_hour_visits:,}</strong> visits were recorded.")
+        insight("The service demand, interaction mix, status code and hourly demand charts help operations understand where support capacity is most needed.")
+
+    display_cols = [
+        c for c in [
+            "datetime", "country", "resource", "service_category",
+            "interaction_type", "lead_quality_score", "is_conversion",
+            "status_code", "campaign_source", "device_type"
+        ]
+        if c in filtered_df.columns
     ]
-    if c in filtered_df.columns
-]
 
-with st.container(border=True):
-    st.subheader("Recent Website Activity")
-    st.markdown(
-        '<div class="section-caption">Last 25 interactions in the filtered view.</div>',
-        unsafe_allow_html=True
-    )
-
-    st.dataframe(
-        filtered_df.sort_values("datetime", ascending=False)[display_cols].head(25),
-        use_container_width=True,
-        height=340,
-        hide_index=True
-    )
+    with st.container(border=True):
+        st.subheader("Recent Website Activity")
+        st.markdown(
+            '<div class="section-caption">Latest interactions in the filtered operational view.</div>',
+            unsafe_allow_html=True
+        )
+        st.dataframe(
+            filtered_df.sort_values("datetime", ascending=False)[display_cols].head(25),
+            use_container_width=True,
+            height=330,
+            hide_index=True
+        )
